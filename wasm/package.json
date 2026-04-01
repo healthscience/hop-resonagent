@@ -1,0 +1,19 @@
+{
+  "name": "reson-agent",
+  "type": "module",
+  "collaborators": [
+    "Sovereign Shell"
+  ],
+  "description": "High-speed WASM Nanobot for Energy-Based Scheduling and Resonance Pulse assessment.",
+  "version": "0.1.0",
+  "files": [
+    "reson_agent_bg.wasm",
+    "reson_agent.js",
+    "reson_agent.d.ts"
+  ],
+  "main": "reson_agent.js",
+  "types": "reson_agent.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "name": "hop-resonagent",
+  "version": "0.0.1",
+  "description": "orchestrate resonAgents",
+  "main": "src/index.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "vitest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/healthscience/hop-resonagent.git"
+  },
+  "keywords": [
+    "tiny",
+    "agents",
+    "learn"
+  ],
+  "author": "aboynejames",
+  "license": "GPL-3.0-or-later",
+  "bugs": {
+    "url": "https://github.com/healthscience/hop-resonagent/issues"
+  },
+  "homepage": "https://github.com/healthscience/hop-resonagent#readme",
+  "devDependencies": {
+    "vitest": "^4.1.2"
+  }
+}
