@@ -85,6 +85,20 @@ class ResonSwarmManager {
       this.biomarkerLeads[i] = biomarkerData[i] || 0;
     }
   }
+
+  /**
+   * 
+   * @param {*} strategy 
+   */
+  setTMTOStrategy(strategy) {
+    if (strategy === 'PRE_COMPUTE') {
+      // We trade RAM for speed. Load the lookup tables into WASM memory.
+      this.wasmInstance.exports.load_bifurcation_tables();
+    } else {
+      // We trade speed for RAM. Free the tables and calculate on-the-fly.
+      this.wasmInstance.exports.flush_tables();
+    }
+  }
 }
 
 // Singleton Instance
