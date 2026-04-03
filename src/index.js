@@ -99,6 +99,23 @@ class ResonSwarmManager {
       this.wasmInstance.exports.flush_tables();
     }
   }
+
+  // The "Base Functionality" Loop
+  async runTick(agent, rawInput, schema) {
+    // 1. FEED: Translate messy life-strap data to bytes
+    const cleanInput = DataMapper.pack(rawInput, schema);
+    agent.marshaller.feed(cleanInput);
+
+    // 2. TICK: The WASM executes the physics of the swimming stroke
+    // (Triggered inside marshaller.feed)
+
+    // 3. HARVEST: Pull the "Knowledge" out
+    const knowledge = agent.harvester.harvest();
+
+    // 4. EMIT: Send to BentoBoxDS and Beebee for "Global Brain" assessment
+    return knowledge;
+  }
+
 }
 
 // Singleton Instance
