@@ -2,7 +2,7 @@
  * hop-resonagent: Ignition & Feed Sequence
  * Triggered by the Cue Contract.
  */
-import { ResonAgentManager } from './manager.js';
+import { ResonAgentManager } from '../logic/manager.js';
 
 export const igniteAndFeed = async (cueContract, rdfMetadata, safeFlow) => {
   const manager = new ResonAgentManager();

@@ -3,7 +3,7 @@
  * Role: Lifecycle & Memory Management for resonAgent WASM
  */
 
-import { AgentWorker } from './agent-worker.js'; 
+import { AgentWorker } from './logic/agent-worker.js'; 
 
 const MAX_AGENTS = 10;
 const BIOMARKER_COUNT = 140;
@@ -40,7 +40,7 @@ class ResonSwarmManager {
       id,
       role,
       sharedBuffer: this.sharedBuffer,
-      wasmPath: '.././reson_agent.wasm'
+      wasmPath: './wasm/reson_agent.wasm'
     });
 
     // Listen for the "Memory Heartbeat"

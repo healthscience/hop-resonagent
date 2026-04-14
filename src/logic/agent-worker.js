@@ -15,11 +15,11 @@ export class AgentWorker extends EventEmitter {
     // Use absolute URL or ensure the environment resolves this correctly
     // In a browser context, we'd use new Worker(new URL('./agent-worker.js', import.meta.url))
     // In Node.js (assuming this is a Node project as per vitest/package.json), we'd use node:worker_threads
-    this.worker = new Worker(new URL('./agent-worker.js', import.meta.url), {
+    this.worker = {} /* new Worker(new URL('./agent-worker.js', import.meta.url), {
       type: 'module'
-    });
+    });*/
 
-    this.worker.onmessage = (e) => {
+    /* this.worker.onmessage = (e) => {
       const { type, agentId, data } = e.data;
       if (type === 'MEM_REPORT') {
         this.emit('telemetry', data);
@@ -33,15 +33,15 @@ export class AgentWorker extends EventEmitter {
     this.worker.postMessage({
       type: 'INIT',
       data: { id, role, sharedBuffer, wasmPath }
-    });
+    });*/
   }
 
   terminate() {
-    this.worker.terminate();
+    // this.worker.terminate();
   }
 
   runEmulation(params) {
-    this.worker.postMessage({ type: 'RUN_EMULATION', data: params });
+    // this.worker.postMessage({ type: 'RUN_EMULATION', data: params });
   }
 }
 
