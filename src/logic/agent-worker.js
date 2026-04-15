@@ -9,7 +9,7 @@ import { Harvester } from '.././routines/harvester.js'
 
 // We'll wrap the Worker instantiation to bridge the Map in index.js
 
-export class ResonAgentManager extends EventEmitter {
+export class ResonAgentCell extends EventEmitter {
   constructor(options = {}) {
     super();
     this.flavor = options.flavor || 'generic';
@@ -163,11 +163,11 @@ if (!isMainThread) {
   }
 
   // Direct Harvesting
-  const resonanceScore = wasmInstance.exports.evaluate_state(sharedLedger);
+  /*const resonanceScore = wasmInstance.exports.evaluate_state(sharedLedger);
   const attunementData = harvester.harvest();
 
   sendTelemetry('RESONANCE', { 
     score: resonanceScore, 
     attunement: attunementData 
-  });
+  });*/
 }

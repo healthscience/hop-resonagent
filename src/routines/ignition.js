@@ -1,32 +1,25 @@
 /**
- * hop-resonagent: Ignition & Feed Sequence
- * Triggered by the Cue Contract.
+ * igniteAndFeed: Aligns the Contract with the Physics Engine.
  */
-import { ResonAgentManager } from '../logic/manager.js';
-
-export const igniteAndFeed = async (cueContract, rdfMetadata, safeFlow) => {
-  const manager = new ResonAgentManager();
-
-  // 1. COMING TO BE: Instantiate the worker with the discovered WASM
+export const igniteAndFeed = async (manager, cueContract, rdfMetadata, safeFlow) => {
+  // 1. BIRTH: Use the existing manager to spawn the worker
   const agent = await manager.spawn(rdfMetadata.wasmUri, cueContract.id);
 
-  // 2. THE FEED: Pull the 'Initial State Vector' from safeFLOW-ecs
-  // We only feed the biomarkers the RDF traversal told us were required.
+  // 2. THE FEED: Extract markers defined by the RDF schema
   const initialState = rdfMetadata.inputSchema.reduce((acc, marker) => {
-    acc[marker] = safeFlow.getLatest(marker);
+    // If safeFlow is awake, get the real bit; otherwise use a placeholder
+    acc[marker] = safeFlow ? safeFlow.getLatest(marker) : 0;
     return acc;
   }, {});
 
-  // 3. HANDSHAKE: Push data into the WASM Linear Memory
-  agent.postMessage({
-    type: 'FEED_STATE',
-    payload: {
-      state: initialState,
-      catalyst: cueContract.signature.catalyst,
-      t: Date.now()
-    }
+  // 3. HANDSHAKE: Send the processed state to the Worker
+  // We use the 'ID' to let the Marshaller know how to pack this
+  manager.feed(cueContract.id, {
+    type: 'INITIAL_STATE',
+    state: initialState,
+    catalyst: cueContract.signature?.catalyst || 'neutral',
+    t: Date.now()
   });
 
-  console.log(`[HOP] resonAgent ${cueContract.id} is live and fed.`);
   return agent;
 };

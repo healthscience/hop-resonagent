@@ -2,8 +2,7 @@
  * hop-resonagents: The Swarm Manager
  * Role: Lifecycle & Memory Management for resonAgent WASM
  */
-
-import { ResonAgentManager } from './logic/agent-worker.js';
+import { ResonAgentCell } from './logic/agent-worker.js';
 import { igniteAndFeed } from './routines/ignition.js';
 
 const MAX_AGENTS = 10;
@@ -11,50 +10,28 @@ const BIOMARKER_COUNT = 140;
 const BYTES_PER_MARKER = 4; // Float32
 
 class ResonSwarmManager {
-  constructor(wiringIn) {
-    this.wiring = wiringIn;
-    this.agents = new Map();
-    
-    // 1. The Coherence Ledger (Shared Memory)
-    // We allocate a buffer that all 10 agents can see simultaneously.
-    this.sharedBuffer = new SharedArrayBuffer(BIOMARKER_COUNT * BYTES_PER_MARKER);
-    this.biomarkerLeads = new Float32Array(this.sharedBuffer);
-    
-    // 2. The Memory Eye
-    this.totalSwarmMemory = 0;
-    this.memoryThreshold = 512 * 1024 * 1024; // 512MB Soft Cap
-  }
+  constructor(wiring) {
+      this.wiring = wiring;
+      this.manager = new ResonAgentCell(wiring); // Manager is born here
+      this.agents = new Map();
+    }
 
-  /**
-   * Bring a new Agent to being
-   * @param {string} id - Unique Nanobot ID
-   * @param {string} role - 'live', 'shadow', or 'besearch'
-   */
-  async birthAgent(id, role = 'shadow') {
-  if (this.agents.size >= MAX_AGENTS) {
-    this.pruneWeakestLink();
-  }
+    async birthAgent(cueContract, rdfMetadata) {
+      const id = cueContract.id;
+      
+      console.log(`[Birth] Initializing resonAgent: ${id}...`);
 
-  // 1. Instantiation (The Shell)
-  const agent = new ResonAgentManager({ id, role });
+      // We pass the manager and the dependencies to the ignition routine
+      const agent = await igniteAndFeed(
+        this.manager, 
+        cueContract, 
+        rdfMetadata, 
+        this.wiring.safeflow
+      );
 
-  // 2. Ignition (The Spark)
-  // We pass the agent handle and the wiring context to the routine
-  const isIgnited = await igniteAndFeed(agent, {
-    id,
-    role,
-    sharedBuffer: this.sharedBuffer,
-    wasmUrl: new URL('../wasm/reson_agent_bg.wasm', import.meta.url)
-  });
-
-  if (!isIgnited) throw new Error(`[Birth] Failed to ignite agent: ${id}`);
-
-    // Listen for the "Memory Heartbeat"
-    agent.on('telemetry', (stats) => this.updateMemoryEye(id, stats));
-    
-    this.agents.set(id, agent);
-    return agent;
-  }
+      this.agents.set(id, agent);
+      return agent;
+    }
 
   /**
    * 

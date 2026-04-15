@@ -1,63 +1,51 @@
-/**
- * hop-resonagent: Manager
- * Orchestrates the "Cells" (workers) and flows the "Pulse" (feed).
- */
-/**
- * hop-resonagent: Manager
- * The "Cell Nursery" that spawns and feeds the Trinity.
- */
-import { Marshaller } from './marshaller.js';
+import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 
 export class ResonAgentManager {
   constructor(wiring) {
-    this.wiring = wiring; 
+    this.wiring = wiring;
     this.agents = new Map();
   }
 
-  /**
-   * SPAWN: The primary entry point for bringing an agent to life.
-   * @param {string} wasmUri - The location of the DNA (WASM).
-   * @param {string} id - The Cue Contract ID (e.g., '400IM_RACE').
-   */
   async spawn(wasmUri, id) {
-    console.log(`[ResonAgent] Spawning cell: ${id} from ${wasmUri}`);
+    const workerUrl = new URL('../agent-worker.js', import.meta.url);
+    
+    // Create the worker
+    const agentWorker = new Worker(workerUrl);
 
-    // 1. Initialize the Worker
-    const agentWorker = new Worker(new URL('./agent-worker.js', import.meta.url), { 
-      type: 'module' 
-    });
-
-    // 2. Marshall the Initial State
-    // We pull priors from the 'wiring' to ensure sovereignty
-    const priors = await this.getSovereignPriors(id);
-
-    // 3. Ignite the Worker
+    // Initial INIT message
     agentWorker.postMessage({
       type: 'INIT',
-      data: {
-        id,
-        wasmPath: wasmUri,
-        priors
-      }
+      data: { id, wasmPath: wasmUri }
     });
-
-    // 4. Listen for Resonance Feedback
-    agentWorker.onmessage = (e) => this.handleAgentFeedback(id, e.data);
 
     this.agents.set(id, agentWorker);
     return agentWorker; 
   }
 
   /**
-   * FEED: The metabolic pulse.
+   * FEED: The primary pulse for data entry.
+   * @param {string} id - The unique ID of the agent (e.g. lsStory.key)
+   * @param {string} flavor - 'physics', 'language', or 'pattern'
+   * @param {any} data - The raw story words or the structured patternMatch
    */
-  feed(id, rawData) {
+  feed(id, flavor, data) {
     const agent = this.agents.get(id);
-    if (!agent) return;
+    if (!agent) {
+      console.warn(`[ResonAgent] No agent found for ID: ${id}`);
+      return;
+    }
 
-    // Use Marshaller to convert JS Object to binary
-    const packed = Marshaller(id, rawData);
-    agent.postMessage({ type: 'TICK', payload: packed });
+    // 1. SMELT: Use the Marshaller to turn the data into a binary buffer
+    // This is where we differentiate between the "Raw Story" and "Pattern Structure"
+    const packedBuffer = this.marshaller.pack(flavor, data);
+
+    // 2. PULSE: Send to the worker
+    agent.postMessage({
+      type: 'TICK',
+      payload: packedBuffer,
+      flavor: flavor,
+      timestamp: Date.now()
+    });
   }
 
   async getSovereignPriors(id) {
