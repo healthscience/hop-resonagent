@@ -1,4 +1,6 @@
 import EventEmitter from 'events';
+import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
+import { Harvester } from '.././routines/harvester.js'
 
 /**
  * agent-worker.js: The Sovereign Sandbox
@@ -6,118 +8,137 @@ import EventEmitter from 'events';
  */
 
 // We'll wrap the Worker instantiation to bridge the Map in index.js
-export class AgentWorker extends EventEmitter {
-  constructor({ id, role, sharedBuffer, wasmPath }) {
+
+export class ResonAgentManager extends EventEmitter {
+  constructor(options = {}) {
     super();
-    this.id = id;
-    this.role = role;
+    this.flavor = options.flavor || 'generic';
+    this.worker = this.initWorker();
+  }
 
-    // Use absolute URL or ensure the environment resolves this correctly
-    // In a browser context, we'd use new Worker(new URL('./agent-worker.js', import.meta.url))
-    // In Node.js (assuming this is a Node project as per vitest/package.json), we'd use node:worker_threads
-    this.worker = {} /* new Worker(new URL('./agent-worker.js', import.meta.url), {
-      type: 'module'
-    });*/
+  initWorker() {
+    // In Node.js, we point to the current file because the worker logic is at the bottom.
+    const workerUrl = new URL(import.meta.url);
+    
+    const worker = new Worker(workerUrl, {
+      workerData: { flavor: this.flavor }
+    });
 
-    /* this.worker.onmessage = (e) => {
-      const { type, agentId, data } = e.data;
-      if (type === 'MEM_REPORT') {
+    worker.on('message', (data) => {
+      this.handleAgentResponse(data);
+      // Forward telemetry to the manager (index.js)
+      if (data.type === 'RESONANCE' || data.type === 'MEM_REPORT' || data.type === 'BIFURCATION_WARNING') {
         this.emit('telemetry', data);
-      } else if (type === 'RESONANCE' || type === 'BIFURCATION_WARNING') {
-        this.emit('telemetry', { type, data });
-      } else if (type === 'EMULATION_COMPLETE') {
-        this.emit('emulation_complete', data);
       }
-    };
+    });
 
-    this.worker.postMessage({
-      type: 'INIT',
-      data: { id, role, sharedBuffer, wasmPath }
-    });*/
+    worker.on('error', (err) => console.error(`[Agent:${this.flavor}] Worker Error:`, err));
+
+    return worker;
+  }
+
+  handleAgentResponse(data) {
+    // Logic for handling worker messages
+    this.emit('message', data);
   }
 
   terminate() {
-    // this.worker.terminate();
+    this.worker.terminate();
   }
 
   runEmulation(params) {
-    // this.worker.postMessage({ type: 'RUN_EMULATION', data: params });
+    this.worker.postMessage({ type: 'RUN_EMULATION', data: params });
   }
+
 }
 
-// We use self because this runs in a WebWorker/WorkerThread context.
-if (typeof self !== 'undefined' && self.onmessage === undefined) {
+// Node.js worker_threads use isMainThread check.
+if (!isMainThread) {
   let wasmInstance = null;
   let sharedLedger = null;
+  let harvester = null; // Store the harvester instance here
   let agentId = null;
   let role = null;
 
-  self.onmessage = async (e) => {
-    const { type, data } = e.data;
 
-    switch (type) {
-      case 'INIT':
-        await initializeAgent(data);
-        break;
-      case 'RUN_EMULATION':
-        executeEmulation(data);
-        break;
+  // Inside agent-worker.js (The Cell)
+  parentPort.on('message', async (e) => {
+    const { type, payload, flavor } = e.data;
+
+    if (type === 'TICK') {
+      if (!wasmInstance) return;
+
+      // 1. SELECT THE GATE
+      // We tell the WASM which "flavor" of data is arriving
+      // 0 = Physics, 1 = Language (Raw), 2 = Pattern (Structured)
+      const gateId = flavor === 'physics' ? 0 : (typeof payload === 'string' ? 1 : 2);
+      
+      // 2. COMMIT TO MEMORY
+      // The Marshaller on the main thread already 'packed' this into a Float32Array
+      const ptr = wasmInstance.exports.get_input_ptr();
+      const wasmMemory = new Float32Array(wasmInstance.exports.memory.buffer);
+      wasmMemory.set(payload, ptr / 4);
+
+      // 3. EXECUTE WITH CONTEXT
+      // We pass the gateId to the WASM so it knows how to interpret the buffer
+      wasmInstance.exports.tick_with_gate(gateId);
+
+      // 4. HARVEST
+      const results = harvester.harvest();
+      sendTelemetry('RESONANCE', results);
     }
-  };
+  });
 
   /**
    * Initialization: Setup WASM and the Shared Memory link
    */
-  async function initializeAgent({ id, role: r, sharedBuffer, wasmPath }) {
-    agentId = id;
-    role = r;
-    
-    // Link to the Coherence Ledger (140 Biomarkers)
-    // We wrap it in a Float32Array so the Worker can read the raw bits.
-    sharedLedger = new Float32Array(sharedBuffer);
+    async function initializeAgent({ id, role: r, sharedBuffer, wasmPath, schema: s }) {
+      agentId = id;
+      role = r;
+      schema = s || ['velocity', 'drag']; // Fallback schema
 
-    try {
-      // 2026 Standard: instantiateStreaming is the fastest path
-      const { instance } = await WebAssembly.instantiateStreaming(
-        fetch(wasmPath),
-        {
-          env: {
-            // Provide hooks for the Rust code to report back to JS
-            report_resonance: (score) => sendTelemetry('RESONANCE', score),
-            log_memory: (bytes) => sendTelemetry('MEM_REPORT', { delta: bytes })
-          }
-        }
-      );
+      try {
+        // ... (Your existing WASM loading logic)
+        const instance = await wasmLoader.default(wasmBuffer);
+        wasmInstance = { exports: instance };
 
-      wasmInstance = instance;
-      console.log(`[${agentId}] resonAgent WASM Initialized.`);
-      
-      // Start the "Passive Observation" loop if this is a 'live' agent
-      if (role === 'live') {
-        startObservationLoop();
+        // ATTACH THE HARVESTER HERE
+        // It now has direct, synchronous access to the wasmInstance memory
+        harvester = new Harvester(wasmInstance, schema);
+
+        console.log(`[${agentId}] Harvester and WASM Initialized.`);
+        
+        if (role === 'live') startObservationLoop();
+      } catch (err) {
+        console.error(`[${agentId}] Failed to bring to being:`, err);
       }
-    } catch (err) {
-      console.error(`[${agentId}] Failed to bring to being:`, err);
     }
-  }
 
   /**
    * The Observation Loop: Runs every 'tick' of the heli clock.
    * It reads from the sharedLedger without any message passing.
-   */
+  */
   function startObservationLoop() {
-    const TICK_MS = 100; // Aligned with heli clock resolution
+    const TICK_MS = 100;
 
     setInterval(() => {
-      if (!wasmInstance) return;
+      if (!wasmInstance || !harvester) return;
 
-      // Zero-Copy: Pass the pointer of the sharedLedger to Rust
-      // The Rust side (resonAgent) reads directly from this memory.
-      const resonanceScore = wasmInstance.exports.evaluate_state(sharedLedger);
+      // 1. Run the WASM calculation
+      const resonanceScore = wasmInstance.exports.evaluate_state 
+        ? wasmInstance.exports.evaluate_state(sharedLedger) 
+        : 0.5;
+
+      // 2. HARVEST the internal state
+      // Instead of just a score, we get the full 'Attunement' data
+      const fullAttunement = harvester.harvest();
       
-      if (resonanceScore < 0.4) {
-        sendTelemetry('BIFURCATION_WARNING', { score: resonanceScore });
-      }
+      // 3. Send the full 'Mind' of the agent back to the manager
+      sendTelemetry('RESONANCE', { 
+        score: resonanceScore,
+        details: fullAttunement // The prediction from the Harvester
+      });
+
     }, TICK_MS);
   }
 
@@ -125,18 +146,28 @@ if (typeof self !== 'undefined' && self.onmessage === undefined) {
    * Execute a "Shadow" Emulation (What-if scenario)
    */
   function executeEmulation(params) {
-    if (role !== 'shadow') return;
+    if (role !== 'shadow' || !wasmInstance) return;
     
     // Use the emulation_engine in the Rust WASM
-    const result = wasmInstance.exports.run_emulation(
+    // NOTE: run_emulation seems to be missing from current WASM build, defaulting to placeholder.
+    const result = wasmInstance.exports.run_emulation ? wasmInstance.exports.run_emulation(
       params.intensity,
       params.duration
-    );
+    ) : { status: 'mock_complete' };
     
-    self.postMessage({ type: 'EMULATION_COMPLETE', data: result });
+    parentPort.postMessage({ type: 'EMULATION_COMPLETE', data: result });
   }
 
   function sendTelemetry(type, payload) {
-    self.postMessage({ type, agentId, data: payload });
+    parentPort.postMessage({ type, agentId, data: payload });
   }
+
+  // Direct Harvesting
+  const resonanceScore = wasmInstance.exports.evaluate_state(sharedLedger);
+  const attunementData = harvester.harvest();
+
+  sendTelemetry('RESONANCE', { 
+    score: resonanceScore, 
+    attunement: attunementData 
+  });
 }

@@ -3,15 +3,16 @@
  * Role: Lifecycle & Memory Management for resonAgent WASM
  */
 
-import { AgentWorker } from './logic/agent-worker.js'; 
+import { ResonAgentManager } from './logic/agent-worker.js';
+import { igniteAndFeed } from './routines/ignition.js';
 
 const MAX_AGENTS = 10;
 const BIOMARKER_COUNT = 140;
 const BYTES_PER_MARKER = 4; // Float32
 
 class ResonSwarmManager {
-  constructor(contextAgents) {
-    this.contextAgents = contextAgents;
+  constructor(wiringIn) {
+    this.wiring = wiringIn;
     this.agents = new Map();
     
     // 1. The Coherence Ledger (Shared Memory)
@@ -30,34 +31,44 @@ class ResonSwarmManager {
    * @param {string} role - 'live', 'shadow', or 'besearch'
    */
   async birthAgent(id, role = 'shadow') {
-    if (this.agents.size >= MAX_AGENTS) {
-      this.pruneWeakestLink();
-    }
-
-    console.log(`[Birth] Initializing resonAgent: ${id} as ${role}...`);
-    
-    const worker = new AgentWorker({
-      id,
-      role,
-      sharedBuffer: this.sharedBuffer,
-      wasmPath: './wasm/reson_agent.wasm'
-    });
-
-    // Listen for the "Memory Heartbeat"
-    worker.on('telemetry', (stats) => this.updateMemoryEye(id, stats));
-    
-    this.agents.set(id, worker);
-    return worker;
+  if (this.agents.size >= MAX_AGENTS) {
+    this.pruneWeakestLink();
   }
 
+  // 1. Instantiation (The Shell)
+  const agent = new ResonAgentManager({ id, role });
+
+  // 2. Ignition (The Spark)
+  // We pass the agent handle and the wiring context to the routine
+  const isIgnited = await igniteAndFeed(agent, {
+    id,
+    role,
+    sharedBuffer: this.sharedBuffer,
+    wasmUrl: new URL('../wasm/reson_agent_bg.wasm', import.meta.url)
+  });
+
+  if (!isIgnited) throw new Error(`[Birth] Failed to ignite agent: ${id}`);
+
+    // Listen for the "Memory Heartbeat"
+    agent.on('telemetry', (stats) => this.updateMemoryEye(id, stats));
+    
+    this.agents.set(id, agent);
+    return agent;
+  }
+
+  /**
+   * 
+   * @param {*} id 
+   * @param {*} stats 
+   */
   updateMemoryEye(id, stats) {
     // Logic: Track RSS and Linear Memory growth
     this.totalSwarmMemory += stats.delta || 0;
     
     if (this.totalSwarmMemory > this.memoryThreshold) {
       console.warn(`[Memory Eye] Swarm exceeding 512MB. Requesting beebee for triage.`);
-      if (this.contextAgents && this.contextAgents.safeflow) {
-        this.contextAgents.safeflow.emit('SYSTEM_STRESS', { type: 'MEMORY', value: this.totalSwarmMemory });
+      if (this.wiring && this.wiring.safeflow) {
+        this.wiring.safeflow.emit('SYSTEM_STRESS', { type: 'MEMORY', value: this.totalSwarmMemory });
       }
     }
   }
@@ -131,6 +142,4 @@ export async function bringToBeing() {
   // Birth 2 initial "Shadow" agents for background emulations
   await hopSwarm.birthAgent('shadow-01', 'shadow');
   await hopSwarm.birthAgent('shadow-02', 'shadow');
-
-  console.log("--- Sovereign Shell: ResonAgents are Alive ---");
 }
